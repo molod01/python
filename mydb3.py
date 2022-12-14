@@ -6,8 +6,9 @@ import random
 
 
 class User:
-    def __init__(self, cursor=None):
-        if cursor == None:
+
+    def __init__(self, row=None) -> None:
+        if row == None:
             self.id = None
             self.login = None
             self.passw = None
@@ -16,19 +17,22 @@ class User:
             self.avatar = None
             self.email = None
             self.email_code = None
+        elif isinstance(row, dict):
+            self.id = row["id"]
+            self.login = row["login"]
+            self.passw = row["pass"]
+            self.name = row["name"]
+            self.salt = row["salt"]
+            self.avatar = row["avatar"]
+            self.email = row["email"]
+            self.email_code = row["email_code"]
         else:
-            row = cursor.fetchone()
-            if not row:
-                raise ValueError('Cursor has no row(s)')
-            u = dict((k, v) for k, v in zip(cursor.column_names, row))
-            self.id = u['id']
-            self.login = u['login']
-            self.passw = u['pass']
-            self.name = u['name']
-            self.salt = u['salt']
-            self.avatar = u['avatar']
-            self.email = u['email']
-            self.email_code = u['email_code']
+            raise ValueError("row type unsuppotred")
+
+    def __str__(self) -> str:
+        return str(self.__dict__)
+
+    __repr__ = __str__
 
 
 class UserDAO:
@@ -54,7 +58,6 @@ class UserDAO:
         user.salt = self.make_salt()
         user.passw = self.hash_pass(user.passw, user.salt)
         user.email_code = self.make_email_code()
-        # .replace('passw', 'pass')
         keys = user.__dict__.keys()
         sel = ','.join(f"`{x}`" for x in keys).replace('passw', 'pass')
         vals = ','.join(f"%({x})s" for x in keys)
@@ -69,6 +72,32 @@ class UserDAO:
         finally:
             cursor.close()
 
+    def read(self, id=None, login=None):
+        ''' Read all 'users' from DB table Users'''
+        sql = f"SELECT u.* FROM `Users` u "
+        params = []
+        if id:
+            sql += "WHERE u.`id` = %s "
+            params.append(id)
+        if login:
+            sql += ("AND" if id else "WHERE ") + "u.`login` = %s "
+            params.append(login)
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute(sql, params)
+        except mysql.connector.Error as err:
+            print(err)
+        else:
+            return tuple(User(row) for row in cursor)
+        finally:
+            cursor.close()
+
+    def read_auth(self, login, password) -> User | None:
+        user = (self.read(login=login) + (None,))[0]
+        if user and self.hash_pass(password, user.salt) == user.passw:
+            return user
+        return None
+
 
 def main(db_conf):
     try:
@@ -77,13 +106,16 @@ def main(db_conf):
         print(err.errno, err)
         return
     print('Connection OK')
-    user = User()
-    user.name = "Nikita"
-    user.login = "xxx"
-    user.email = "user@ukr.net"
-    user.passw = '1234'
     UserDao = UserDAO(db)
-    UserDao.create(user)
+    # user = User()
+    # user.name = "Nikita"
+    # user.login = "xxx"
+    # user.email = "user@ukr.net"
+    # user.passw = '1234'
+    # UserDao.create(user)
+    print(UserDao.read_auth('xxx', '1234'))
+    print(UserDao.read(login='xxx'))
+
     return
 
 

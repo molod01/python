@@ -8,6 +8,11 @@ connection_info = {
     "password": "pass_192"
 }
 
+
+def show_databases():
+    pass
+
+
 def main():
     try:
         connection = mariadb.connect(**connection_info)
@@ -15,6 +20,7 @@ def main():
         print(err)
     else:
         print("Connection Ok")
+
 
 if __name__ == "__main__":
     main()
