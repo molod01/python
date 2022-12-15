@@ -1,8 +1,10 @@
 import string
+import time
 import uuid
 import mysql.connector
 import hashlib
 import random
+import conf
 
 
 class User:
@@ -74,7 +76,7 @@ class UserDAO:
 
     def read(self, id=None, login=None):
         ''' Read all 'users' from DB table Users'''
-        sql = f"SELECT u.* FROM `Users` u "
+        sql = "SELECT u.* FROM `Users` u "
         params = []
         if id:
             sql += "WHERE u.`id` = %s "
@@ -92,11 +94,75 @@ class UserDAO:
         finally:
             cursor.close()
 
-    def read_auth(self, login, password) -> User | None:
+    def read_auth(self, login, password):
         user = (self.read(login=login) + (None,))[0]
-        if user and self.hash_pass(password, user.salt) == user.passw:
+        if user \
+                and user.del_dt == None \
+                and self.hash_passw(password, user.salt) == user.passw:
             return user
         return None
+
+    def update(self, user: User):
+        fields = user.__dict__.keys()
+        sql = "UPDATE `users` u SET " + \
+            ','.join(f"u.`{field.replace('passw', 'pass')}` = %({field})s" for field in fields if field != 'id') + \
+            " WHERE u.`id` = %(id)s "
+        try:
+            cursor = self.db.cursor()
+            cursor.execute(sql, user.__dict__)
+            self.db.commit()
+        except mysql.connector.Error as err:
+            print('update', err)
+        else:
+            return True
+        finally:
+            cursor.close()
+        return False
+
+    def delete(self, user: User):
+        try:
+            cursor = self.db.cursor()
+            user.del_dt = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+            cursor.execute(
+                "UPDATE users u SET u.del_dt = %s WHERE u.id = %s", (user.del_dt, user.id,))
+            self.db.commit()
+        except mysql.connector.Error as err:
+            print('delete', err)
+        else:
+            return True
+        finally:
+            try:
+                cursor.close()
+            except:
+                pass
+        return False
+
+    def restore(self, user: User):
+        try:
+            cursor = self.db.cursor()
+            cursor.execute(
+                "UPDATE Users u SET u.del_dt = NULL WHERE u.`id` = %s", (user.id))
+            self.db.commit()
+        except mysql.connector.Error as err:
+            print('restore', err)
+        else:
+            return True
+        finally:
+            try:
+                cursor.close()
+            except:
+                pass
+        return False
+
+    def is_login_free(self, login: str):
+        try:
+            cursor = self.db.cursor()
+        except mysql.connector.Error as err:
+            print(err)
+        else:
+            return not self.read(login=login)
+        finally:
+            cursor.close()
 
 
 def main(db_conf):
@@ -105,29 +171,12 @@ def main(db_conf):
     except mysql.connector.Error as err:
         print(err.errno, err)
         return
-    print('Connection OK')
-    UserDao = UserDAO(db)
-    # user = User()
-    # user.name = "Nikita"
-    # user.login = "xxx"
-    # user.email = "user@ukr.net"
-    # user.passw = '1234'
-    # UserDao.create(user)
-    print(UserDao.read_auth('xxx', '1234'))
-    print(UserDao.read(login='xxx'))
-
-    return
+    else:
+        print('Connection OK')
+        UserDao = UserDAO(db)
+        print(UserDao.is_login_free('xxx'))  # False
+        print(UserDao.is_login_free('yyy'))  # True
 
 
 if __name__ == "__main__":
-    connection_config = {
-        "host": "localhost",
-        "port": 3306,
-        "database": "py192",
-        "user": "py192_user",
-        "password": "pass_192",
-        "use_unicode":                 True,
-        "charset":            "utf8mb4",
-        "collation": "utf8mb4_general_ci"
-    }
-    main(connection_config)
+    main(conf.connection)
