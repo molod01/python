@@ -1,0 +1,3 @@
+RewriteEngine On
+RewriteRule ^auth$ api/auth.py [END,QSA]
+RewriteRule ^items$ api/items.py [END,QSA]
