@@ -4,6 +4,25 @@ import uuid
 import mysql.connector
 import hashlib
 import random
+from datetime import datetime, timedelta
+
+
+class AccessToken:
+    def __init__(self, row=None):
+        if row == None:
+            self.token = None
+            self.expires = None
+            self.user_id = None
+        elif isinstance(row, dict):
+            self.token = row["token"]
+            self.expires = row["expires"]
+            self.user_id = row["user_id"]
+        elif isinstance(row, list) or isinstance(row, tuple):
+            self.token = row[0]
+            self.expires = row[1]
+            self.user_id = row[2]
+        else:
+            raise ValueError("row type unsupported")
 
 
 class User:
@@ -21,7 +40,7 @@ class User:
         elif isinstance(row, dict):
             self.id = row["id"]
             self.login = row["login"]
-            self.passw = row["pass"]
+            self.passw = row["password"]
             self.name = row["name"]
             self.salt = row["salt"]
             self.avatar = row["avatar"]
@@ -75,13 +94,13 @@ class UserDAO:
 
     def read(self, id=None, login=None):
         ''' Read all 'users' from DB table Users'''
-        sql = "SELECT u.* FROM `Users` u "
+        sql = "SELECT u.* FROM `Users` AS u"
         params = []
         if id:
-            sql += "WHERE u.`id` = %s "
+            sql += " WHERE u.`id` = %s"
             params.append(id)
         if login:
-            sql += ("AND" if id else "WHERE ") + "u.`login` = %s "
+            sql += (" AND" if id else " WHERE") + " u.`login` = %s"
             params.append(login)
         try:
             cursor = self.db.cursor(dictionary=True)
@@ -95,9 +114,7 @@ class UserDAO:
 
     def read_auth(self, login, password):
         user = (self.read(login=login) + (None,))[0]
-        if user \
-                and user.del_dt == None \
-                and self.hash_passw(password, user.salt) == user.passw:
+        if user and self.hash_pass(password, user.salt) == user.passw:
             return user
         return None
 
@@ -160,5 +177,69 @@ class UserDAO:
             print(err)
         else:
             return not self.read(login=login)
+        finally:
+            cursor.close()
+
+
+class AccessTokenDAO:
+    def __init__(self, connection: mysql.connector.MySQLConnection):
+        self.connection = connection
+
+    def create(self, user: str | User):
+        if isinstance(user, User):
+            user_id = user.id
+        elif isinstance(user, str):
+            user_id = user
+        else:
+            return None
+
+        access_token = AccessToken()
+        access_token.token = random.randbytes(20).hex()
+        access_token.expires = (datetime.now() + timedelta(days=1))\
+            .strftime('%Y-%m-%d %H:%M:%S')
+        access_token.user_id = user_id
+
+        sql = "INSERT INTO access_tokens(`token`,`expires`,`user_id`) "
+        sql += "VALUES(%(token)s, %(expires)s, %(user_id)s)"
+        try:
+            cursor = self.connection.cursor(dictionary=True)
+            cursor.execute(sql, access_token.__dict__)
+            self.connection.commit()
+        except mysql.connector.Error:
+            return None
+        else:
+            return access_token
+        finally:
+            cursor.close()
+
+    def read(self, token=None):
+        sql = "SELECT * FROM `access_tokens`"
+        if token:
+            sql = " ".join([sql, "WHERE `token` = %s"])
+
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(sql, [token])
+        except mysql.connector.Error:
+            return None
+        else:
+            return tuple(AccessToken(row) for row in cursor)
+        finally:
+            cursor.close()
+
+    def read_by_user_id(self, user_id) -> AccessToken:
+        sql = "SELECT * FROM `access_tokens`"
+        sql = " ".join([sql, "WHERE `user_id` = %s"])
+
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(sql, [user_id])
+        except mysql.connector.Error:
+            return None
+        else:
+            try:
+                return tuple(AccessToken(row) for row in cursor)[0]
+            except:
+                return None
         finally:
             cursor.close()

@@ -1,4 +1,4 @@
-#!C:\Program Files\Python310\python.exe
+#!C:\Program Files\Python39\python.exe
 
 import os
 import sys
