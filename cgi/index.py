@@ -7,7 +7,7 @@ script = os.environ["SCRIPT_FILENAME"]
 query = os.environ["QUERY_STRING"]
 
 params = dict()
-if len(query):
+if len(query) > 0:
     for param in query.split('&'):
         param = param.split('=')
         params[param[0]] = param[1]

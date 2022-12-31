@@ -1,71 +1,97 @@
 #!C:\Program Files\Python310\python.exe
+from datetime import datetime
+import json
 import os
 import base64
 import mysql.connector
-import dao
-from db import db_conf
+from dao import UserDAO, AccessTokenDAO
+from db import DB
+import asyncio
 # Authorization Server
 
 
-def send401(message: str = None) -> None:
+async def connect():
+    try:
+        return mysql.connector.connect(**DB)
+    except mysql.connector.Error as error:
+        return error.msg
+    except asyncio.CancelledError:
+        return None
+
+
+def send_401(message=None):
     print("Status: 401 Unauthorized")
-    print('WWW-Authenticate: Basic realm "Authorization required" ')
+    if message:
+        print("Content-Type: text/plain")
     print()
     if message:
-
         print(message)
-    return
 
 
-# дістаємо заголовок Authorization
-if 'HTTP_AUTHORIZATION' in os.environ.keys():
-    auth_header = os.environ['HTTP_AUTHORIZATION']
+async def main():
+    db_connect = asyncio.create_task(connect())
 
-else:
-    # відправляємо 401
-    send401()
-    exit()
+    if 'HTTP_AUTHORIZATION' in os.environ.keys():
+        auth_header = os.environ['HTTP_AUTHORIZATION']
+    else:
+        db_connect.cancel()
+        send_401("No credentials provided")
+        exit()
 
-# Перевіряємо схему авторизації - має бути Basic
-if auth_header.startswith('Basic'):
-    credentials = auth_header[6:]
-else:
-    send401("Authorization scheme Basic required")
-    exit()
-# декодуємо credentials
-try:
-    data = base64.b64decode(credentials, validate=True).decode('utf-8')
-except:
-    send401("Credentials invalid: Base64 string required")
-    exit()
+    if auth_header.startswith('Basic'):
+        credentials = auth_header[6:]
+    else:
+        db_connect.cancel()
+        send_401("Authorization scheme Basic required")
+        exit()
 
-if not ":" in data:
-    send401("Credentials invalid: Login:Password format excepted")
-    exit()
+    try:
+        data = base64.b64decode(credentials, validate=True).decode('utf-8')
+    except:
+        db_connect.cancel()
+        send_401("Invalid credentials: Base64 string required")
+        exit()
 
-login, password = data.split(":", maxsplit=1)
+    if not ':' in data:
+        db_connect.cancel()
+        send_401("Invalid credentials: login:password format expected")
+        exit()
 
-try:
-    db = mysql.connector.connect(**db_conf)
-except mysql.connector.Error as err:
-    send401(err)
-    exit()
+    login, password = data.split(':', maxsplit=1)
 
-user_dao = dao.UserDAO(db)
+    connection = await db_connect
 
-user = user_dao.read_auth(login, password)
+    if connection == None:
+        send_401("Failed to connect to database")
+        exit()
 
-if not user:
-    send401("Credentials rejected")
-    exit()
+    if isinstance(connection, str):
+        send_401(connection)
+        exit()
 
-# Успішне завершення
-print("Status: 200 OK")
-print("Content-Type: text/plain")
-print()
-print(f'''
-{{
-    "access_token":"{user.id},
-    "token_type":"Bearer",
-    "expires_in":3600
-}} ''', end="")
+    user = UserDAO(connection).read_auth(login, password)
+
+    if user is None:
+        send_401("Credentials rejected")
+        exit()
+
+    access_token_dao = AccessTokenDAO(connection)
+    access_token = access_token_dao.read_by_user_id(user.id)
+    if access_token:
+        token_expired = (access_token.expires - datetime.now()).seconds < 600
+        if token_expired:
+            access_token = access_token_dao.create(user)
+    else:
+        access_token = access_token_dao.create(user)
+
+    if not access_token:
+        send_401("Token creation error")
+        exit()
+
+    print("Status: 200 OK")
+    print("Content-Type: application/json;charset=UTF-8")
+    print()
+    print(json.dumps(access_token.__dict__, indent=4, default=str))
+
+if __name__ == "__main__":
+    asyncio.run(main())

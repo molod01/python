@@ -1,17 +1,35 @@
 #!C:\Program Files\Python39\python.exe
-
 import os
 import sys
+import base64
 
-# метод запиту
+content_length = 0
+
+cred = "admin:123"
+cred_bytes = cred.encode('utf-8')
+code_bytes = base64.b64encode(cred_bytes)
+code_str = code_bytes.decode('ascii')
+
+content_length += len(code_str) + 1
+
 method = os.environ["REQUEST_METHOD"]
 
-# заголовки запиту (у lower case)
+content_length += len(method) + 1
+
+query = os.environ["QUERY_STRING"]
+if len(query):
+    content_length += len(query) + 1
+    params = dict()
+    for param in query.split('&'):
+        param = param.split('=')
+        params[param[0]] = param[1]
+    content_length += len(str(params)) + 1
+
 headers = {}
 for k, v in os.environ.items():
     if k.startswith("HTTP_"):
         headers[k[5:].lower()] = v
-# окремі заголовки проходять власними назвами:
+
 k = "CONTENT_LENGTH"
 if k in os.environ.keys():
     headers[k.lower()] = os.environ[k]
@@ -19,47 +37,20 @@ k = "CONTENT_TYPE"
 if k in os.environ.keys():
     headers[k.lower()] = os.environ[k]
 
+content_length += len(str(headers)) + 1
 
-# тіло запиту
 body = sys.stdin.read()
 
-# URL-параметри (query string)
-query = os.environ["QUERY_STRING"]
-
+content_length += len(body)
 
 print("Connection: close")
-print("Content-Type: text/plain; charset=cp1251")
-print("")
+print(f"Content-Length: {content_length}")
+print()
 print(method)
-print(query)
+if len(query):
+    print(query)
+    print(params)
 print(headers)
-print(body)
-
-# '''
-# API - інтерфейс взаємодії частин програми (комплексу) між собою
-#  протиставляється до людинно-машинної взаємодії
-# Web-API (Backend-Fronted взаємодія) -> взаємодія за допомогою
-#  веб-протоколу НТТР.
-# Особливості Web-API:
-#  Канали передачі інформації:
-#   - метод запиту - рядок, з якого починається запит.
-#      Є стандартні методи та методи користувача
-#   - URL-параметри (query string)
-#   - заголовки - пари "ключ: значення; атрибути"
-#   - тіло - довільний контент, відокремлений від заголовків
-#       порожнім рядком
-# Завдання: вивести всі заголовки запиту
-# Підхід: заголовки запиту перетворюються у змінні оточення, імена яких
-#  складаються з префіксу НТТР_ та імені заголовку у верхньому реєстрі
-#  окремі заголовки проходять власними назвами: CONTENT_LENGTH, CONTENT_TYPE
-#  окремі заголовки взагалі не проходять, перехоплюються сервером: Authorization
-#    для їх передачі у скрипт потрібно змінювати vhost.conf: додати
-#    SetEnvIf Authorization "(.+)" HTTP_AUTHORIZATION=$1
-#
-# Завдання: вивести тіло запиту
-# Підхід: тіло запиту передається у sys.stdin
-#
-# Завдання: розібрати URL параметри
-# Підхід: ці параметри збираються у змінну QUERY_STRING
-#
-# '''
+if len(body):
+    print(body)
+print(code_str)

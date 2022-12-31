@@ -10,61 +10,82 @@
 
 <body>
     <h1>Py 192</h1>
-    <label>Логін: <input id="user-login" /></label><br />
-    <label>Пароль: <input id="user-password" /></label><br />
-    <input type="button" id="auth-button" value="Вхід" />
-    <br />
-    <input type="button" id="items-button" value="Контент 1" />
-    <p id="out"></p>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const authButton = document.querySelector("#auth-button");
-            if (!authButton) throw "DOMContentLoaded: #auth-button not found";
-            authButton.addEventListener('click', authButtonClick);
-
-            const itemsButton = document.querySelector("#items-button");
-            if (!itemsButton) throw "DOMContentLoaded: #items-button not found";
-            itemsButton.addEventListener('click', itemsButtonClick);
-        });
-        function itemsButtonClick(e) {
-            const accessToken = window.sessionStorage.getItem("access_token");
-            if (!accessToken) {
-                alert("Необхідно авторизуватись");
-                return;
-            }
-            fetch("/items", {
-                method: "GET",
-                headers: {
-                    "Authorization": "Bearer " + accessToken
-                }
-            }).then(console.log);
-        }
-        function authButtonClick(e) {
-            const userLogin = document.querySelector("#user-login");
-            if (!userLogin) throw "authButtonClick: #user-login not found";
-            const userPassword = document.querySelector("#user-password");
-            if (!userPassword) throw "authButtonClick: #user-password not found";
-            // TODO: перевірити на заповненість та формат
-            const credentials = btoa(userLogin.value + ":" + userPassword.value);
-            fetch("/auth", {
-                method: "GET",
-                headers: {
-                    "Authorization": "Basic " + credentials
-                }
-            }).then(r => {
-                if (r.status == 401) {
-                    r.text().then(t => out.innerText = t);
-                }
-                else if (r.status == 200) {
-                    r.json().then(j => {
-                        out.innerText = j.access_token;
-                        window.sessionStorage.setItem('access_token', j.access_token);
-                    });
-                }
-            })
-        }
-    </script>
+    <label for="login">Логін:</label>
+    <input id="login" />
+    <label for="password">Пароль:</label>
+    <input id="password" />
+    <br>
+    <div style="margin: 1em 30%;">
+        <input type="button" id="auth-button" value="Вхід" />
+        <input type="button" id="items-button" value="Контент" />
+    </div>
+    <p id="output"></p>
 </body>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const authButton = document.querySelector('#auth-button');
+        if (!authButton) {
+            throw 'DOMContentLoaded: #auth-button not found';
+        }
+        authButton.addEventListener('click', authButtonClick);
+        const itemsButton = document.querySelector('#items-button');
+        if (!itemsButton) {
+            throw 'DOMContentLoaded: #items-button not found';
+        }
+        itemsButton.addEventListener('click', itemsButtonClick);
+    });
+    const authButtonClick = e => {
+        const login = document.querySelector('#login');
+        if (!login) {
+            throw 'authButtonClick: #login not found';
+        }
+        const password = document.querySelector('#password');
+        if (!password) {
+            throw 'authButtonClick: #password not found';
+        }
+        const credentials = btoa(login.value + ':' + password.value);
+        const output = document.querySelector('#output');
+        if (!output) {
+            throw 'authButtonClick: #output not found';
+        }
+        fetch('/auth', {
+            method: 'GET',
+            headers: {
+                Authorization: `Basic ${credentials}`
+            }
+        }).then(r => {
+            switch (r.status) {
+                case 401:
+                    r.text().then(j => (output.innerText = j));
+                    break;
+                case 200:
+                    r.json().then(json => {
+                        output.innerText = json.token;
+                        window.sessionStorage.setItem('access_token', json.token);
+                    });
+                    break;
+            }
+        });
+    };
+    const itemsButtonClick = e => {
+        const accessToken = window.sessionStorage.getItem('access_token');
+        if (!accessToken) {
+            alert('Authorization required');
+            return;
+        }
+        fetch('/items', {
+            method: 'GET',
+            headers: {
+                Authorization: `Bearer ${accessToken}`
+            }
+        }).then(r => {
+            if (r.status != 200) {
+                output.innerText = 'Content is blocked';
+            } else {
+                output.innerText = 'Content will be here';
+            }
+        });
+    };
+</script>
 
 </html>

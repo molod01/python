@@ -1,16 +1,14 @@
 #!C:\Program Files\Python310\python.exe
-from db import db_conf
-import dao
+from db import DB
+from dao import AccessTokenDAO, UserDAO
 import mysql.connector
 import os
 
-# API demo - доступ до ресурсу обмеженого доступу (Resource Server)
-# дістаємо заголовок Authorization
 
-
-def send401(message: str = None):
+def send_401(message=None):
     print("Status: 401 Unauthorized")
-    print("WWW-Authenticate: Basic realm :Authorization required")
+    if message:
+        print("Content-Type: text/plain")
     print()
     if message:
         print(message)
@@ -20,26 +18,28 @@ def send401(message: str = None):
 if 'HTTP_AUTHORIZATION' in os.environ.keys():
     auth_header = os.environ['HTTP_AUTHORIZATION']
 else:
-    send401()
+    send_401("No token provided")
     exit()
-
-try:
-    db = mysql.connector.connect(**db_conf)
-except mysql.connector.Error as err:
-    send401(err)
-    exit()
-
-user_dao = dao.UserDAO(db)
-print(user_dao.read())
 
 if auth_header.startswith('Bearer'):
     token = auth_header[7:]
 else:
-    send401()
+    send_401("Authorization scheme Bearer required")
     exit()
 
-# Успішне завершення
+try:
+    connection = mysql.connector.connect(**DB)
+except mysql.connector.Error as error:
+    send_401(error)
+    exit()
+
+token = AccessTokenDAO(connection).read(token)[0]
+if not token:
+    send_401("Token rejected")
+    exit()
+user = UserDAO(connection).read(token.user_id)[0]
+
 print("Status: 200 OK")
-print("Content-Type: text/plain;")
+print("Content-Type: application/json;charset=UTF-8")
 print()
-print(f'"{token}"')
+print(f"{user.login}")
